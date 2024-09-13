@@ -3,7 +3,8 @@
 import { clerkClient, currentUser } from "@clerk/nextjs"
 import { db } from './db';
 import { redirect } from "next/navigation";
-import { Agency, Plan, User } from "@prisma/client";
+import { Agency, Plan, SubAccount, User } from "@prisma/client";
+import { v4 } from "uuid";
 
 export const getAuthUserDetails = async () => {
     const user = await currentUser();
@@ -27,8 +28,8 @@ export const getAuthUserDetails = async () => {
 
 export const saveActivityLogsNotification = async ({
     agencyId, description, subaccountId }: {
-        agencyId?: String, description: String,
-        subaccountId?: String
+        agencyId?: string, description: String,
+        subaccountId?: string
     }) => {
     const authUser = await currentUser();
     let userData;
@@ -159,7 +160,7 @@ export const verifyAndAcceptInvitation = async () => {
 }
 
 
-export const updateAgencyDetails = async (agencyId:String, agencyDetails:Partial<Agency>) =>{
+export const updateAgencyDetails = async (agencyId:string, agencyDetails:Partial<Agency>) =>{
     const response = await db.agency.update({
         where:{ id:agencyId },
         data:{...agencyDetails}})
@@ -167,7 +168,7 @@ export const updateAgencyDetails = async (agencyId:String, agencyDetails:Partial
 }
 
 
-export const deleteAgency = async (agencyId: String) =>{
+export const deleteAgency = async (agencyId: string) =>{
     const response = await db.agency.delete({where:{
         id: agencyId
     }})
@@ -248,8 +249,158 @@ export const upsertAgency = async (agency:Agency,price?:Plan) =>{
                 }
             }
         })
+        return agencyDetails
     } catch (error) {
         console.log(error);
         
     }
 }
+
+
+export const getNotificationAndUser = async(agencyId: string) =>{
+    try {
+        const response = await db.notification.findMany({
+            where: { agencyId },
+            include: { User: true},
+            orderBy:{
+                createdAt: 'desc'
+            }
+        })
+        return response;
+        
+    } catch (error) {
+        console.log(error)
+        
+    }
+}
+
+
+export const upsertSubAccount = async (subAccount: SubAccount) =>{
+    if(!subAccount.companyEmail) return null
+    const agencyOwner = await db.user.findFirst({
+        where: {
+            Agency:{id:subAccount.agencyId},
+            role: 'AGENCY_OWNER'
+        },
+    })
+    if(!agencyOwner) return console.log("🔴 Error could not create Sub Account")
+        const permissionId = v4();
+    const response = await db.subAccount.upsert({
+        where: { id: subAccount.id },
+        update: subAccount,
+        create:{
+            ...subAccount,
+            Permissions: {
+                create:{
+                    access: true,
+                    email: agencyOwner.email,
+                    id: permissionId
+            },
+            connect:{
+                subAccountId: subAccount.id,
+                id: permissionId,
+                
+            },
+        },
+        Pipeline: {
+            create: { name: 'Lead Cycle' },
+          },
+          SidebarOption: {
+            create: [
+              {
+                name: 'Launchpad',
+                icon: 'clipboardIcon',
+                link: `/subaccount/${subAccount.id}/launchpad`,
+              },
+              {
+                name: 'Settings',
+                icon: 'settings',
+                link: `/subaccount/${subAccount.id}/settings`,
+              },
+              {
+                name: 'Funnels',
+                icon: 'pipelines',
+                link: `/subaccount/${subAccount.id}/funnels`,
+              },
+              {
+                name: 'Media',
+                icon: 'database',
+                link: `/subaccount/${subAccount.id}/media`,
+              },
+              {
+                name: 'Automations',
+                icon: 'chip',
+                link: `/subaccount/${subAccount.id}/automations`,
+              },
+              {
+                name: 'Pipelines',
+                icon: 'flag',
+                link: `/subaccount/${subAccount.id}/pipelines`,
+              },
+              {
+                name: 'Contacts',
+                icon: 'person',
+                link: `/subaccount/${subAccount.id}/contacts`,
+              },
+              {
+                name: 'Dashboard',
+                icon: 'category',
+                link: `/subaccount/${subAccount.id}`,
+              },
+            ],
+          },
+        },
+      })
+      return response
+    
+}
+
+export const getUserPermissions = async (userId: string) => {
+    const response = await db.user.findUnique({
+      where: { id: userId },
+      select: { Permissions: { include: { SubAccount: true } } },
+    })
+  
+    return response
+  }
+
+
+  export const updateUser = async (user: Partial<User>) => {
+    const response = await db.user.update({
+      where: { email: user.email },
+      data: { ...user },
+    })
+  
+    await clerkClient.users.updateUserMetadata(response.id, {
+      privateMetadata: {
+        role: user.role || 'SUBACCOUNT_USER',
+      },
+    })
+  
+    return response
+  }
+
+  export const changeUserPermissions = async (
+    permissionId: string | undefined,
+    userEmail: string,
+    subAccountId: string,
+    permission: boolean
+  ) => {
+    try {
+      const response = await db.permissions.upsert({
+        where: { id: permissionId },
+        update: { access: permission },
+        create: {
+          access: permission,
+          email: userEmail,
+          subAccountId: subAccountId,
+        },
+      })
+      return response
+    } catch (error) {
+      console.log('🔴Could not change persmission', error)
+    }
+  }
+
+
+  

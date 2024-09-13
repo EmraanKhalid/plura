@@ -54,8 +54,8 @@ const FileUpload = ({ apiEndpoint, onChange, value }: Props) => {
     
     <div className="w-full bg-muted/30">
       
-      {/* <UploadDropzone
-  endpoint='agencyLogo' // Ensure this matches the correct route
+      <UploadDropzone
+  endpoint={apiEndpoint} // Ensure this matches the correct route
   onClientUploadComplete={(res) => {
     if (res?.[0]?.url) {
       onChange(res[0].url);  // Check if the response includes a valid URL
@@ -66,19 +66,7 @@ const FileUpload = ({ apiEndpoint, onChange, value }: Props) => {
   onUploadError={(error) => {
     console.error("Upload error: ", error.message);
   }}
-/> */}
-<UploadDropzone
-        endpoint="agencyLogo"
-        onClientUploadComplete={(res) => {
-          // Do something with the response
-          console.log("Files: ", res);
-          alert("Upload Completed");
-        }}
-        onUploadError={(error: Error) => {
-          // Do something with the error.
-          alert(`ERROR! ${error.message}`);
-        }}
-      />
+/>
 
     </div>
   )
